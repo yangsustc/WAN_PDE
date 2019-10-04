@@ -25,20 +25,19 @@ f(x, _a, _ρ0, _ρ1) = f(x, _a, _ρ0, _ρ1, cos(_ρ0))
 f(x) = f(x, a0(x), ρ0(x), ρ1(x))
 
 grad_uθ(x) = Tracker.gradient((x) -> sum(uθ(x)), x; nest=true)[1]
-# ∇_dot_a∇u(x) = Tracker.jacobian(x-> a0(x) .* ∇u(x), x)
 grad_φη(x) = Tracker.gradient((x) -> sum(φη(x)), x; nest=true)[1]
 
 # grad_
 I(x, _∇uθ) = - (_∇uθ' * grad_φη(x))[1] * a0(x) + (φη(x)[1]) * (sum(_∇uθ .^ 2)/2 - f(x))
 I(x) = I(x, grad_uθ(x))
 
-# Primal networks - weak solution to PDE
+# Primal network - weak solution to PDE
 uθ = Flux.Chain(Dense(d, hlsθ, tanh),
-                # Dense(hlsθ, hlsθ, tanh),
-                # Dense(hlsθ, hlsθ, softplus),
-                # Dense(hlsθ, hlsθ, tanh),
-                # Dense(hlsθ, hlsθ, softplus),
-                # Dense(hlsθ, hlsθ, tanh),
+                Dense(hlsθ, hlsθ, tanh),
+                Dense(hlsθ, hlsθ, softplus),
+                Dense(hlsθ, hlsθ, tanh),
+                Dense(hlsθ, hlsθ, softplus),
+                Dense(hlsθ, hlsθ, tanh),
                 Dense(hlsθ, 1)
     )
 
@@ -57,10 +56,9 @@ uθ = Flux.Chain(Dense(d, hlsθ, tanh),
 u_true(x) = sin.((π .* view(x, 1, :, :) .^ 2 + view(x, 2, :, :) .^ 2) ./ 2)
 g(x) = u_true(x)
 
-# loss_int.(x) =
-loss_bndry(x) = sum((uθ(x) .- g(x)') .^ 2)
-loss(xr, xb) = loss_int(xr) + α * loss_bndry(xb)
-loss(xr) = loss_int(xr)
+loss_int(xrs) =  sum(log( sum(I.(xrs[1]) .^ 2) / sum( φη(xrs[2]) .^ 2)))
+loss_bndry(xbs) = sum((uθ(xbs) .- g(xbs)') .^ 2)
+loss(xrs, xbs) = loss_int(xrs) + α * loss_bndry(xbs)
 
 # optθ = Flux.Optimise.ADAGrad(τθ)
 # optη = Flux.Optimise.ADAGrad(τη)
@@ -80,10 +78,9 @@ function train_step()
     for i in 1:Nb
         (j=rand(1:10)) <= d ? xb[j, i] = 1 : xb[j - 5, i] = -1
     end
-
+    xr = (xr, hcat(xr...))
     for i in 1:Kᵤ
         # update weak solution network parameter
-        # l = loss(xr, xb)
         gradsθ = Flux.Tracker.gradient(() -> loss(xr, xb), psθ)
         Flux.Tracker.update!(optθ, psθ, gradsθ)
     end
