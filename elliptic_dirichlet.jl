@@ -2,15 +2,16 @@ using LinearAlgebra
 using Flux
 using Flux: softplus, elu
 using Random
+using Plots
 
 d = 5                   # Number of dimensions
 Kφ = 1                  # Num iters for adversarial network
-Kᵤ = 2                  # Num iters for solutions
+Ku = 2                  # Num iters for solutions
 τη = 0.04               # Learning rate for adversary network
 τθ = 0.015              # Learning rate for primal network
 Nr = 4000 * d           # No. of sampled pts in region
 Nb = 40 * d * d         # No. of sampled point on boundary
-α = 10000               # Weight paramter on boundary
+α = 10000 * Nb              # Weight paramter on boundary
 hlsθ = 20               # Hidden Layer size for primal network
 hlsη = 50               # Hidden Layer size of adversarial network
 
@@ -56,30 +57,30 @@ uθ = Flux.Chain(Dense(d, hlsθ, tanh),
 u_true(x) = sin.((π .* view(x, 1, :, :) .^ 2 + view(x, 2, :, :) .^ 2) ./ 2)
 g(x) = u_true(x)
 
-loss_int(xrs) =  sum(log( sum(I.(xrs[1]) .^ 2) / sum( φη(xrs[2]) .^ 2)))
-loss_bndry(xbs) = sum((uθ(xbs) .- g(xbs)') .^ 2)
-loss(xrs, xbs) = loss_int(xrs) + α * loss_bndry(xbs)
+loss_int(xrs) =  log(sum(I.(xrs[1]) .^ 2) / sum(φη(xrs[2]) .^ 2))
+loss_bndry(xbs) = sum(((uθ(xbs) .- g(xbs)') .^ 2) ./ Nb)
+loss(xrs, xbs) = loss_int(xrs) + α * Nb * loss_bndry(xbs) # To update primal network
+loss(xrs) = loss_int(xrs) # Needed to update adversarial network
 
-# optθ = Flux.Optimise.ADAGrad(τθ)
-# optη = Flux.Optimise.ADAGrad(τη)
+optθ = Flux.Optimise.ADAGrad(τθ)
+optη = Flux.Optimise.ADAGrad(-τη)
 
-optθ = Flux.Optimise.Descent(τθ)
-optη = Flux.Optimise.Descent(τη)
+# optθ = Flux.Optimise.Descent(τθ)
+# optη = Flux.Optimise.Descent(-τη) # minus coz of gradient ascent
 
 psθ = params(uθ)
 psη = params(φη)
 
-# boundary_iter = collect(partition(1:Nb, ))
-
 function train_step()
     # sample points
-    xr = [2 .* rand(Float32, d, 1) .- 1 for i in 1:Nb] # Sampling in region
+    xr = [2 .* rand(Float32, d, 1) .- 1 for i in 1:Nr] # Sampling in region
     xb = 2 .* rand(Float32, d, Nb) .- 1
     for i in 1:Nb
         (j=rand(1:10)) <= d ? xb[j, i] = 1 : xb[j - 5, i] = -1
     end
     xr = (xr, hcat(xr...))
-    for i in 1:Kᵤ
+
+    for i in 1:Ku
         # update weak solution network parameter
         gradsθ = Flux.Tracker.gradient(() -> loss(xr, xb), psθ)
         Flux.Tracker.update!(optθ, psθ, gradsθ)
@@ -87,13 +88,24 @@ function train_step()
 
     for i in 1:Kφ
         # update adversarial network parameter
-        l = loss(xr)
-        gradsη  = Tracker.gradient(() -> l, psη)
-
-        do gradient ascent
-        Tracker.update!(optη, psη, gradsη)
+        gradsη = Flux.Tracker.gradient(() -> loss(xr), psη)
+        Flux.Tracker.update!(optη, psη, gradsη)
     end
 end
 
+NUM_ITERS = 2000
+
+for i in 1:NUM_ITERS
+    train_step()
+end
+
 # Final plot
-u_true(x) = sin((π * (x[1] ^ 2) + x[2] ^ 2) / 2)
+# u_true(x) = sin((π * (x[1] ^ 2) + x[2] ^ 2) / 2)
+
+pyplot(leg=false, ticks=nothing)
+plot_x = plot_y = range(-1, stop = 1, length = 20)
+
+u_true_plot(x, y) = u_true(vcat(x, y))[1]
+u_theta_plot(x, y) = uθ(vcat(x, y, zeros(Float32, d -2, 1)))
+p_true = plot(plot_x, plot_y, u_true_plot, st = [:surface])
+p_theta = plot(plot_x, plot_y, u_theta_plot, st = [:surface])
