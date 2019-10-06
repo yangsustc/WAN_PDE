@@ -3,6 +3,7 @@ using Flux
 using Flux: softplus, elu
 using Random
 using Plots
+using BSON: @save
 
 d = 5                   # Number of dimensions
 Kφ = 1                  # Num iters for adversarial network
@@ -97,15 +98,28 @@ NUM_ITERS = 2000
 
 for i in 1:NUM_ITERS
     train_step()
+    if i % 50 == 0
+        println("$(i)th iteration done!")
+    end
+    if i%500 == 0
+        @save "primal$(i).bson" uθ
+        @save "adversary$(i).bson" φη
+    end
 end
+
+# Let's save this.
+@save "primal.bson" uθ
+@save "adversary.bson" φη
 
 # Final plot
 # u_true(x) = sin((π * (x[1] ^ 2) + x[2] ^ 2) / 2)
 
 pyplot(leg=false, ticks=nothing)
 plot_x = plot_y = range(-1, stop = 1, length = 20)
+l1 = @layout [a{0.7w} b; c{0.2h}]
+l2 = @layout [a{0.7w} b; c{0.2h}]
 
 u_true_plot(x, y) = u_true(vcat(x, y))[1]
-u_theta_plot(x, y) = uθ(vcat(x, y, zeros(Float32, d -2, 1)))
-p_true = plot(plot_x, plot_y, u_true_plot, st = [:surface])
-p_theta = plot(plot_x, plot_y, u_theta_plot, st = [:surface])
+u_theta_plot(x, y) = uθ(vcat(x, y, zeros(Float32, d -2, 1))).data[1]
+p_true = plot(plot_x, plot_y, u_true_plot, st = [:surface, :contourf], layout=l1)
+p_theta = plot(plot_x, plot_y, u_theta_plot, st = [:surface, :contourf], layout=l2)
