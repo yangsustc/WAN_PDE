@@ -1,14 +1,15 @@
 using LinearAlgebra
 using Flux
-using Flux: softplus, elu
+using Flux: softplus
 using Random
 using Plots
 using BSON: @save
+using CuArrays
 
 d = 5                   # Number of dimensions
 Kφ = 1                  # Num iters for adversarial network
 Ku = 2                  # Num iters for solutions
-τη = 0.04               # Learning rate for adversary network
+τη = 0.004               # Learning rate for adversary network
 τθ = 0.015              # Learning rate for primal network
 Nr = 4000 * d           # No. of sampled pts in region
 Nb = 40 * d * d         # No. of sampled point on boundary
@@ -18,11 +19,11 @@ hlsη = 50               # Hidden Layer size of adversarial network
 
 a0(x) = 1 .+ sum(x .^ 2, dims= 1)
 ρ0(x) = (π .* (view(x, 1, :, :) .^ 2) .+ (view(x, 2, :, :) .^ 2)) ./ 2
-ρ1(x) = (π .^ 2 .* (view(x, 1, :, :) .^ 2) .+ (view(x, 2, :, :) .^ 2)) ./ 4
+ρ1(x) = (Float16(π) .^ 2 .* (view(x, 1, :, :) .^ 2) .+ (view(x, 2, :, :) .^ 2)) ./ 4
 
 # So that we don't recalculate the same terms
-f(x, _a, _ρ0, _ρ1, _cos) = 4 .* _ρ1 .* _a .* sin.(_ρ0) .- 4 .* _ρ0 .* _cos .-
-                            (π + 1) .* _a .* _cos .+ 2 .* _ρ1 .* _cos
+f(x, _a, _ρ0, _ρ1, _cos) = 4 .* _ρ1 .* _a .* sin.(_ρ0) .+
+                            (2 .* _ρ1 .- 4 .* _ρ0 .- (π + 1) .* _a) .* _cos
 f(x, _a, _ρ0, _ρ1) = f(x, _a, _ρ0, _ρ1, cos.(_ρ0))
 f(x, _a) = f(x, _a, ρ0(x)', ρ1(x)')
 
@@ -32,69 +33,70 @@ f(x, _a) = f(x, _a, ρ0(x)', ρ1(x)')
 grad_uθ(x) = Tracker.forward(x -> uθ(x), x)[2](1)[1]
 grad_φη(x) = Tracker.forward(x -> φη(x), x)[2](1)[1]
 
-# function grad_uθ(x)
-    # _, back = Tracker.forward(x -> uθ(x), x)[2](1)[1]
-    # back(1)[1]
-# end
-
-# function grad_φη(x)
-#     _, back = Tracker.forward(x -> φη(x), x)
-#     back(1)[1]
-# end
-
-# Tracker.gradient((x) -> sum(uθ(x)), x; nest=true)[1]
-# grad_varphi(x) = Tracker.gradient((x) -> sum(φη(x)), x; nest=true)[1]
-
-function I(x, _∇uθ, _a)
+function I(x, _∇uθ, _φη, _a)
     t1 = sum(_∇uθ .* grad_φη(x), dims = 1) .* _a
-    t2 = sum(_∇uθ .^ 2, dims = 1) .* φη(x) ./ 2
-    t2 .- f(x, _a) .- t1
+    t2 = sum(_∇uθ .* _∇uθ, dims = 1)  ./ 2
+    (t2  .- f(x, _a)) .* _φη .- t1
 end
 
-I(x) = I(x, grad_uθ(x), a0(x))
+I(x, _φη) = I(x, grad_uθ(x), _φη, a0(x))
 
 # Primal network - weak solution to PDE
-uθ = Flux.Chain(Dense(d, hlsθ, tanh),
-                Dense(hlsθ, hlsθ, tanh),
+
+uθ = Flux.Chain(Dense(d, hlsθ), x -> tanh.(x),
+                Dense(hlsθ, hlsθ), x -> tanh.(x),
                 Dense(hlsθ, hlsθ, softplus),
-                Dense(hlsθ, hlsθ, tanh),
+                Dense(hlsθ, hlsθ), x -> tanh.(x),
                 Dense(hlsθ, hlsθ, softplus),
-                Dense(hlsθ, hlsθ, tanh),
+                Dense(hlsθ, hlsθ), x -> tanh.(x),
                 Dense(hlsθ, 1)
-    )
+    ) |> gpu
 
 # Adversarial network
-φη = Flux.Chain(Dense(d, hlsη, tanh),
-                Dense(hlsη, hlsη, tanh),
+ϵ = Float32(1e-7)
+
+_sinc_custom(x) = @. sin(x) / (x + ϵ) # Speed on GPUs during backprop
+
+φη = Flux.Chain(Dense(d, hlsη), x -> tanh.(x),
+                Dense(hlsη, hlsη), x -> tanh.(x),
                 Dense(hlsη, hlsη, softplus),
-                Dense(hlsη, hlsη, sinc),
+                Dense(hlsη, hlsη), x -> _sinc_custom(x),
                 Dense(hlsη, hlsη, softplus),
-                Dense(hlsη, hlsη, sinc),
-                Dense(hlsη, hlsη, sinc),
+                Dense(hlsη, hlsη), x -> _sinc_custom(x),
+#                Dense(hlsη, hlsη), x -> _sinc_custom(x),
                 Dense(hlsη, hlsη, softplus),
                 Dense(hlsη, 1)
-    )
+    ) |> gpu
 
 u_true(x) = sin.((π .* view(x, 1, :, :) .^ 2 + view(x, 2, :, :) .^ 2) ./ 2)
 g(x) = u_true(x)
 
-loss_int(xrs) =  log((sum(I(xrs)) ^ 2) / sum(φη(xrs) .^ 2))
-loss_bndry(xbs) = sum(((uθ(xbs) .- g(xbs)') .^ 2) ./ Nb)
-loss(xrs, xbs) = loss_int(xrs) + α * Nb * loss_bndry(xbs) # To update primal network
-loss(xrs) = loss_int(xrs) # Needed to update adversarial network
+function loss_int(xr, _φη)
+    t1 = sum(I(xr, _φη))
+    log((t1 * t1) / sum(_φη .* _φη))
+end
+
+loss_int(xr) = loss_int(xr, φη(xr))
+
+function loss_bndry(xb)
+    k = uθ(xb) .- g(xb)'
+    sum(( k .* k) ) / Nb
+end
+
+loss(xr, xb) = loss_int(xr) + α * Nb * loss_bndry(xb) # To update primal network
+loss(xr) = loss_int(xr) # Needed to update adversarial network
 
 optθ = Flux.Optimise.ADAGrad(τθ)
 optη = Flux.Optimise.ADAGrad(-τη)
 
-# optθ = Flux.Optimise.Descent(τθ)
-# optη = Flux.Optimise.Descent(-τη) # minus coz of gradient ascent
-
-psθ = params(uθ)
-psη = params(φη)
+# optθ = Flux.Optimise.Descent(τθ*.1)
+# optη = Flux.Optimise.Descent(-τη *.1) # minus coz of gradient ascent
+psθ = Flux.params(uθ)
+psη = Flux.params(φη)
 
 function train_step()
     # Sample points
-    xr = 2 .* rand(Float32, d, Nr) # Sampling in region
+    xr = 2 .* rand(Float32, d, Nr) .- 1# Sampling in region
 
     # Sample along the boundary
     xb = 2 .* rand(Float32, d, Nb) .- 1
@@ -102,30 +104,40 @@ function train_step()
         (j=rand(1:10)) <= d ? xb[j, i] = 1 : xb[j - 5, i] = -1
     end
 
+    xr = gpu(xr)
+    xb = gpu(xb)
+
     for i in 1:Ku
         # update weak solution network parameter
         gradsθ = Flux.Tracker.gradient(() -> loss(xr, xb), psθ)
         Flux.Tracker.update!(optθ, psθ, gradsθ)
     end
 
-    # for i in 1:Kφ
+    for i in 1:Kφ
         # update adversarial network parameter
         gradsη = Flux.Tracker.gradient(() -> loss(xr), psη)
         Flux.Tracker.update!(optη, psη, gradsη)
-    # end
+    end
 end
 
-NUM_ITERS = 2000
+NUM_ITERS = 20000
 
-function custom_training_loop()
-    for i in 1:NUM_ITERS
+function custom_training_loop(start = 1)
+    start < 1 && return
+
+    for i in start:NUM_ITERS
         train_step()
-        if i % 5 == 1
-            println("$(i)th iteration done!")
+        if i % 100 == 0
+            u1 = cpu(uθ)
+            adversary1 = cpu(φη)
+
+            @save "primal$(i).bson" u1
+            @save "adversary$(i).bson" adversary1
+            # @save "primal$(i).bson" uθ
+            # @save "adversary$(i).bson" φη
         end
-        if i % 25 == 1
-            @save "primal$(i).bson" uθ
-            @save "adversary$(i).bson" φη
+        if i % 100 == 0
+            println("$(i) iterations done!")
         end
     end
     println("Training done!")
@@ -136,7 +148,7 @@ end
 custom_training_loop()
 
 # Plots
-pyplot(leg=false, ticks=nothing)
+pyplot(leg=true)
 plot_x = plot_y = range(-1, stop = 1, length = 20)
 l1 = @layout [a{0.7w} b; c{0.2h}]
 l2 = @layout [a{0.7w} b; c{0.2h}]
