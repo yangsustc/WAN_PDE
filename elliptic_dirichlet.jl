@@ -9,7 +9,7 @@ using CuArrays
 d = 5                   # Number of dimensions
 Kφ = 1                  # Num iters for adversarial network
 Ku = 2                  # Num iters for solutions
-τη = 0.004               # Learning rate for adversary network
+τη = 0.04               # Learning rate for adversary network
 τθ = 0.015              # Learning rate for primal network
 Nr = 4000 * d           # No. of sampled pts in region
 Nb = 40 * d * d         # No. of sampled point on boundary
@@ -63,7 +63,7 @@ _sinc_custom(x) = @. sin(x) / (x + ϵ) # Speed on GPUs during backprop
                 Dense(hlsη, hlsη), x -> _sinc_custom(x),
                 Dense(hlsη, hlsη, softplus),
                 Dense(hlsη, hlsη), x -> _sinc_custom(x),
-#                Dense(hlsη, hlsη), x -> _sinc_custom(x),
+                Dense(hlsη, hlsη), x -> _sinc_custom(x),
                 Dense(hlsη, hlsη, softplus),
                 Dense(hlsη, 1)
     ) |> gpu
