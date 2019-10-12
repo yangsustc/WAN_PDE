@@ -150,8 +150,8 @@ custom_training_loop()
 # Plots
 pyplot(leg=true)
 plot_x = plot_y = range(-1, stop = 1, length = 20)
-l1 = @layout [a{0.7w} b; c{0.2h}]
-l2 = @layout [a{0.7w} b; c{0.2h}]
+l1 = @layout [a{0.7w} b]
+l2 = @layout [a{0.7w} b]
 
 u_true_plot(x, y) = u_true(vcat(x, y))[1]
 u_theta_plot(x, y) = uθ(vcat(x, y, zeros(Float32, d -2, 1))).data[1]
