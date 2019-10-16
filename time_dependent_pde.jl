@@ -5,15 +5,19 @@ using Random
 using Plots
 using BSON: @save
 using CuArrays
+using DifferentialEquations
+using DiffEqFlux
 
-d = 20                   # Number of dimensions
+T = 1                   # Let's solve in time interval [0, T]
+N = 10                  # Divide time into 10 segments
+d = 5                   # Number of dimensions
 Kφ = 1                  # Num iters for adversarial network
 Ku = 2                  # Num iters for solutions
 τη = 0.04               # Learning rate for adversary network
 τθ = 0.015              # Learning rate for primal network
 Nr = 4000 * d           # No. of sampled pts in region
 Nb = 40 * d * d         # No. of sampled point on boundary
-α = 20000 * Nb          # Weight paramter on boundary
+α = 10000 * Nb          # Weight paramter on boundary
 hlsθ = 20               # Hidden Layer size for primal network
 hlsη = 50               # Hidden Layer size of adversarial network
 
@@ -22,17 +26,19 @@ a0(x) = 1 .+ sum(x .^ 2, dims= 1)
 ρ1(x) = (Float16(π) .^ 2 .* (view(x, 1, :, :) .^ 2) .+ (view(x, 2, :, :) .^ 2)) ./ 4
 
 # So that we don't recalculate the same terms
-f(x, _a, _ρ0, _ρ1, _cos) = 4 .* _ρ1 .* _a .* sin.(_ρ0) .+
-                            (2 .* _ρ1 .- 4 .* _ρ0 .- (π + 1) .* _a) .* _cos
-f(x, _a, _ρ0, _ρ1) = f(x, _a, _ρ0, _ρ1, cos.(_ρ0))
-f(x, _a) = f(x, _a, ρ0(x)', ρ1(x)')
+pi = Float16(π)
+pi_by_2 = Float32(π) / 2
 
-# grad_uθ(x) = Tracker.gradient((x) -> sum(uθ(x)), x; nest=true)[1]
-# grad_φη(x) = Tracker.gradient((x) -> sum(φη(x)), x; nest=true)[1]
+f(_g, _h, _sin, t) = (((pi .^ 2 .- 2) ./ 2) .* exp.(-1 .* t) - 2 .* exp.(-2 .* t)) .* _h
+g(_h, t) = _h .* exp.(-1 .* t))
+
+sin_term(x) = sin.(pi_by_2 .* view(x, 1, :, :))
+h(x, _sin) = 2 .* _sin .* cos.(pi_by_2 .* view(x, 2, :, :))
 
 grad_uθ(x) = Tracker.forward(x -> uθ(x), x)[2](1)[1]
 grad_φη(x) = Tracker.forward(x -> φη(x), x)[2](1)[1]
 
+# Integral
 function I(x, _∇uθ, _φη, _a)
     t1 = sum(_∇uθ .* grad_φη(x), dims = 1) .* _a
     t2 = sum(_∇uθ .* _∇uθ, dims = 1)  ./ 2
@@ -42,7 +48,6 @@ end
 I(x, _φη) = I(x, grad_uθ(x), _φη, a0(x))
 
 # Primal network - weak solution to PDE
-
 uθ = Flux.Chain(Dense(d, hlsθ), x -> tanh.(x),
                 Dense(hlsθ, hlsθ), x -> tanh.(x),
                 Dense(hlsθ, hlsθ, softplus),
@@ -120,7 +125,7 @@ function train_step()
     end
 end
 
-NUM_ITERS = 20000
+NUM_ITERS = 10000
 
 function custom_training_loop(start = 1)
     start < 1 && return
