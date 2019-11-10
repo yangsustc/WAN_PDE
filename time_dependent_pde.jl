@@ -168,16 +168,20 @@ function custom_training_loop(start = 1)
 
             @save "primal$(i).bson" u1
             @save "adversary$(i).bson" adversary1
-            # @save "primal$(i).bson" uθ
-            # @save "adversary$(i).bson" φη
+
         end
         if i % 100 == 0
             println("$(i) iterations done!")
         end
     end
+
+    u1 = cpu(uθ)
+    adversary1 = cpu(φη)
+
+    @save "primal.bson" u1
+    @save "adversary.bson" adversary1
+
     println("Training done!")
-    @save "primal.bson" uθ
-    @save "adversary.bson" φη
 end
 
 custom_training_loop()
@@ -192,7 +196,7 @@ l3 = @layout [a{0.7w} b]
 
 u_true_plot(t, x) = u_true(vcat(x, zeros(Float32, d - 1, 1), t))[1]
 u_theta_plot(t, x) = uθ(vcat(x, zeros(Float32, d -1, 1), t)).data[1]
-u_diff(t, x) = u_true_plot(t, x) - u_theta_plot(t, x)
+u_diff(t, x) = abs(u_true_plot(t, x) - u_theta_plot(t, x))
 p_true = plot(plot_t, plot_x, u_true_plot, st = [:surface, :contourf], layout=l1)
 p_theta = plot(plot_t, plot_x, u_theta_plot, st = [:surface, :contourf], layout=l2)
 p_diff = plot(plot_t, plot_x, u_diff, st = [:surface, :contourf], layout=l3)
