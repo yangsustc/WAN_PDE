@@ -8,8 +8,10 @@ using Plots
 using BSON: @save
 using CuArrays
 using Base.Iterators
-using DifferentialEquations
+# using DifferentialEquations
 using DiffEqFlux
+using CUDAnative: sinc
+
 
 t0 = 0                  # Start at t0 = 0
 T = 1.0f0               # Let's solve in time interval [0, T]
@@ -54,7 +56,7 @@ tspan = (0.0, T)
 tspan = Float32.(tspan)
 
 function dudt(xt, p)
-    (uθ_, φη_) = DiffEqFlux.restructure(m, p)
+    (uθ_, φη_) = DiffEqFlux.restructure(Chain(uθ, φη), p)
     # xt = vcat(xr, CuArrays.fill(t, (1, Nr)))
     # global _∇uθ, _∇φη, _φη, _uθ
     _∇uθ_ = grad_(xt, uθ_)
@@ -62,16 +64,19 @@ function dudt(xt, p)
     _φη_ = φη_(xt)
     _uθ_ = uθ_(xt)
     _f = f(xt)'
-    t2 = -sum(_uθ_ .* _∇φη_ .* select_grad_t)
-    t3 = (sum(_∇φη_ .*_∇uθ_ .* select_grad_x)
-             - sum(((_uθ_ .^ 2) .+ _f) .* _φη_)
+    t2 = -sum(_uθ_ .* _∇φη_ .* select_grad_t )#./ 16)
+    t3 = (sum(_∇φη_ .*_∇uθ_ .* select_grad_x )#./ 16)
+             - sum(((_uθ_ .^ 2) .+ _f) .* _φη_ )#./ 16)
          ) * (T - t0)
     return t2 + t3
 end
 
 # function n_ode
-function n_ode(x, xr, tspan)
-    p = DiffEqFlux.destructure(Chain(m1, m2))
+function n_ode(x, xr)
+
+    p = DiffEqFlux.destructure(Chain(uθ, φη))
+
+    # Note: the following custom neural_ode uses u as `Scalar` than `Vector`
     dudt_(u::Tracker.TrackedReal, p, t) = dudt(vcat(xr, CuArrays.fill(t, (1,Nr))), p)# =# fill(t, (1,Nr))))
     dudt_(u::Real, p, t) = Flux.data(dudt(vcat(xr, CuArrays.fill(t, (1,Nr))), p)) # =# fill(t, (1,Nr)))))
     prob = ODEProblem(dudt_, x, tspan, p)
@@ -83,9 +88,9 @@ end
 
 # n_ode(x) = neural_ode(dudt_, x, tspan, Tsit5(), save_everystep=false, save_start=false)
 
-function I(xr, xrt0, xrT)#, _∇uθ, _∇φη, _φη, _uθ)
-    t1 = sum(uθ(xrT) .* φη(xrT) .- uθ(xrt0) .* φη(xrt0))
-    return n_ode(t1)
+function I(xr, xrt0, xrT)
+    t1 = sum(uθ(xrT) .* φη(xrT) .- uθ(xrt0) .* φη(xrt0)) #/ 16
+    return n_ode(t1, xr) #* 16
 end
 
 # Primal network - weak solution to PDE
@@ -99,18 +104,18 @@ uθ = Flux.Chain(Dense(d + 1, hlsθ), x -> tanh.(x),
     ) |> gpu
 
 # Adversarial network
-ϵ = Float32(1e-7)
+ϵ = Float32(1e-4)
 
-_sinc_custom(x) = @. sin(x) / (x + ϵ) # Speed on GPUs during backprop
+# _sinc_custom(x) = @. sin(x) / (x + ϵ) # Speed on GPUs during backprop
 
 φη = Flux.Chain(Dense(d + 1, hlsη), x -> tanh.(x),
                 Dense(hlsη, hlsη), x -> tanh.(x),
                 Dense(hlsη, hlsη, softplus),
-                Dense(hlsη, hlsη), x -> _sinc_custom(x),
-                # Dense(hlsη, hlsη, softplus),
-                # Dense(hlsη, hlsη), x -> _sinc_custom(x),
-                Dense(hlsη, hlsη), x -> _sinc_custom(x),
-                # Dense(hlsη, hlsη, softplus),
+                Dense(hlsη, hlsη), x -> sinc.(x),
+                Dense(hlsη, hlsη, softplus),
+                Dense(hlsη, hlsη), x -> sinc.(x),
+                Dense(hlsη, hlsη), x -> sinc.(x),
+                Dense(hlsη, hlsη, softplus),
                 Dense(hlsη, 1)
     ) |> gpu
 
@@ -159,6 +164,21 @@ _uθ = uθ(xrt0)
 
 function train_step()
     # Sample points
+    xr = gpu(2 .* rand(Float32, d, Nr) .- 1) # Sampling in region
+    xrt0 = vcat(xr, tr_t0)
+    xrT = vcat(xr, tr_T) 
+    # Sample along the boundary
+    xb = vcat(2 .* rand(Float32, d, Nb) .- 1, rand(Float32, 1, Nb))
+    for i in 1:Nb
+        (j=rand(1:2*d)) <= d ? xb[j, i] = 1 : xb[j - 5, i] = -1
+        if (rand() > 0.99)
+            (j=rand(1:2*d)) <= d ? xb[j, i] = 1 : xb[j - 5, i] = -1
+        end
+    end
+    xb = gpu(xb)
+
+    # Sample in the region in t=0
+    xa = vcat(2 .* CuArrays.rand(Float32, d, Na) .- 1, CuArrays.zeros(Float32, 1, Na))
 
     for i in 1:Ku
         # update weak solution network parameter
