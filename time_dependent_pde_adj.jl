@@ -123,12 +123,15 @@ m = Chain(uθ, φη)
 
 u_true(xs_and_t) = g(xs_and_t)
 
-function loss_int(xr, xrt0, xrT, _∇uθ, _∇φη, _φη, _uθ)
-    t1 = I(xr, xrt0, xrT, _∇uθ, _∇φη, _φη, _uθ)
-    log((t1 * t1) / sum(_φη .* _φη))
+function loss_int(xr, xrt0, xrT, _integrated_φη)
+    t1 = I(xr, xrt0, xrT)
+    log((t1 * t1) / sum(_integrated_φη .* _integrated_φη))
 end
 
-loss_int(xr, xrt0, xrT) = loss_int(xr, xrt0, xrT, grad_uθ(xr), grad_φη(xr), φη(xr), uθ(xr))
+function intergrate_φη(xr)
+end
+
+loss_int(xr, xrt0, xrT) = loss_int(xr, xrt0, xrT, intergrate_φη(xr))
 
 function loss_bndry(xb)
     k = uθ(xb) .- g(xb)'
@@ -167,6 +170,7 @@ function train_step()
     xr = gpu(2 .* rand(Float32, d, Nr) .- 1) # Sampling in region
     xrt0 = vcat(xr, tr_t0)
     xrT = vcat(xr, tr_T) 
+
     # Sample along the boundary
     xb = vcat(2 .* rand(Float32, d, Nb) .- 1, rand(Float32, 1, Nb))
     for i in 1:Nb
