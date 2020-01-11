@@ -8,9 +8,10 @@ using Plots
 using BSON: @save
 using CuArrays
 using Base.Iterators
-# using DifferentialEquations
+using DifferentialEquations
 using DiffEqFlux
-using CUDAnative: sinc
+using CUDAnative
+using CUDAnative: sinc, tanh
 
 
 t0 = 0                  # Start at t0 = 0
@@ -29,7 +30,6 @@ Na = Nb
 hlsθ = 20               # Hidden Layer size for primal network
 hlsη = 50               # Hidden Layer size of adversarial network
 
-pi = Float16(π)
 pi_by_2 = Float32(π) / 2
 pi_sq_by_2_minus_2 = (Float16(π * π) / 2) - 2
 
@@ -73,9 +73,7 @@ end
 
 # function n_ode
 function n_ode(x, xr)
-
-    p = DiffEqFlux.destructure(Chain(uθ, φη))
-
+    p = DiffEqFlux.destructure(Chain(uθ, φη)) # Since there are two separate models (uθ, φη), Chaining was used to hack destructure - restructure.
     # Note: the following custom neural_ode uses u as `Scalar` than `Vector`
     dudt_(u::Tracker.TrackedReal, p, t) = dudt(vcat(xr, CuArrays.fill(t, (1,Nr))), p)# =# fill(t, (1,Nr))))
     dudt_(u::Real, p, t) = Flux.data(dudt(vcat(xr, CuArrays.fill(t, (1,Nr))), p)) # =# fill(t, (1,Nr)))))
@@ -104,10 +102,6 @@ uθ = Flux.Chain(Dense(d + 1, hlsθ), x -> tanh.(x),
     ) |> gpu
 
 # Adversarial network
-ϵ = Float32(1e-4)
-
-# _sinc_custom(x) = @. sin(x) / (x + ϵ) # Speed on GPUs during backprop
-
 φη = Flux.Chain(Dense(d + 1, hlsη), x -> tanh.(x),
                 Dense(hlsη, hlsη), x -> tanh.(x),
                 Dense(hlsη, hlsη, softplus),
@@ -118,8 +112,6 @@ uθ = Flux.Chain(Dense(d + 1, hlsθ), x -> tanh.(x),
                 Dense(hlsη, hlsη, softplus),
                 Dense(hlsη, 1)
     ) |> gpu
-
-m = Chain(uθ, φη)
 
 u_true(xs_and_t) = g(xs_and_t)
 
