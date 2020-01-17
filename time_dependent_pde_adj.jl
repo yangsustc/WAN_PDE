@@ -54,6 +54,7 @@ select_grad_t = [zeros(Float32, d,1);1] |> gpu
 
 tspan = (0.0, T)
 tspan = Float32.(tspan)
+T_minus_t0 = CuArray(reshape([T- t0], 1, 1))
 
 function dudt(xt, p)
     (uθ_, φη_) = DiffEqFlux.restructure(Chain(uθ, φη), p)
@@ -67,27 +68,25 @@ function dudt(xt, p)
     t2 = -sum(_uθ_ .* _∇φη_ .* select_grad_t )#./ 16)
     t3 = (sum(_∇φη_ .*_∇uθ_ .* select_grad_x )#./ 16)
              - sum(((_uθ_ .^ 2) .+ _f) .* _φη_ )#./ 16)
-         ) * (T - t0)
-    return t2 + t3
+         ) .* T_minus_t0
+    return t2 .+ t3
 end
 
-# function n_ode
 function n_ode(x, xr)
     p = DiffEqFlux.destructure(Chain(uθ, φη)) # Since there are two separate models (uθ, φη), Chaining was used to hack destructure - restructure.
-    # Note: the following custom neural_ode uses u as `Scalar` than `Vector`
-    dudt_(u::Tracker.TrackedReal, p, t) = dudt(vcat(xr, CuArrays.fill(t, (1,Nr))), p)# =# fill(t, (1,Nr))))
-    dudt_(u::Real, p, t) = Flux.data(dudt(vcat(xr, CuArrays.fill(t, (1,Nr))), p)) # =# fill(t, (1,Nr)))))
+    # Note: the following custom neural_ode uses u as `Scalar` than `Vector` || Edit - diffeq_adj can't backprop with u as scalar.
+    dudt_(u::TrackedArray, p, t) = dudt(vcat(xr, CuArrays.fill(t, (1,Nr))), p)# =# fill(t, (1,Nr))))
+    dudt_(u::AbstractArray, p, t) = Flux.data(dudt(vcat(xr, CuArrays.fill(t, (1,Nr))), p)) # =# fill(t, (1,Nr)))))
     prob = ODEProblem(dudt_, x, tspan, p)
-    return diffeq_adjoint(p, prob, save_start=false, save_everystep=false, u0=x)
+    return diffeq_rd(p, prob, save_start=false, save_everystep=false, u0=x)
 end
 
 # dudt(u, p, t, xt) = dudt(u, p, t, xt, grad_uθ(xt), grad_φη(xt), φη(xt), uθ(xt))
 # dudt(u, p, t) = dudt(u, p, t, vcat(xr, CuArrays.fill(t, (1, Nr))))
-
 # n_ode(x) = neural_ode(dudt_, x, tspan, Tsit5(), save_everystep=false, save_start=false)
 
 function I(xr, xrt0, xrT)
-    t1 = sum(uθ(xrT) .* φη(xrT) .- uθ(xrt0) .* φη(xrt0)) #/ 16
+    t1 = sum(uθ(xrT) .* φη(xrT) .- uθ(xrt0) .* φη(xrt0), dims = 2) #/ 16
     return n_ode(t1, xr) #* 16
 end
 
@@ -138,8 +137,9 @@ end
 loss_primal(xr, xrt0, xrT, xb, xa) = loss_int(xr, xrt0, xrT) + γ * loss_init(xa) + α * loss_bndry(xb)  # To update primal network
 loss_adversarial(xr, xrt0, xrT) = loss_int(xr, xrt0, xrT) # Needed to update adversarial network
 
-optθ = Flux.Optimise.ADAGrad(τθ)
-optη = Flux.Optimise.ADAGrad(-τη) # minus coz of gradient ascent
+optθ = Flux.Optimise.Descent()
+# optθ = Flux.Optimise.ADAGrad(τθ)
+# optη = Flux.Optimise.ADAGrad(-τη) # minus coz of gradient ascent
 
 psθ = Flux.params(uθ)
 psη = Flux.params(φη)
