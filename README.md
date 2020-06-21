@@ -1,4 +1,4 @@
-# WAN_PDE
+# Weak Adversarial Networks with Neural ODEs
 
 - Implemented [Weak Adversarial Nets](https://arxiv.org/abs/1907.08272) for solving high-dimenstional PDE.
 - Formulated time dependent solution as an ODE problem, instead of numerical integration. Backpropagation by adjoint method of neural ODEs.
@@ -14,7 +14,7 @@ The typical method of backpropagation through ODEs is adjoint method as mentione
 - Faster Convergence of time dependent PDEs leading upto one-third number of iterations required for converging.
 - We can select from a wide variety of ODE solvers based on order of error tolerance vs speed to converge trade-off.
 
-#### Elliptic Dirichlet (20 dimensions) 
+### Elliptic Dirichlet (20 dimensions) 
 Note that graph is shown about x1 and x2 axis only while keeping remaining x_i = 1 for i=3, 4, ...20
 
 Approximated Function:
@@ -25,7 +25,7 @@ True Function:
 
 ![True Function](https://github.com/Ayushk4/WAN_PDE/blob/master/Elliptic_dirichlet_files/dims%3D20/True_function.png)
 
-#### Time Dependent PDEs
+### Time Dependent PDEs
 
 Nonlinear diffusion-reaction of the form
 
@@ -50,7 +50,7 @@ Absolute Difference b/w approximated function and true function:
 
 ![Absolute Difference](https://github.com/Ayushk4/WAN_PDE/blob/master/Time_Dependent_pdes/20k_iters_Absolute_Diff.png)
 
-### Possible directions:
+## Possible directions:
 
 **Current limitation** of this approach of solving PDE consumes about 2.5x more memory while backpropagating via adjoint method when compared to using reverse mode AD with numerical integration methods.
 
