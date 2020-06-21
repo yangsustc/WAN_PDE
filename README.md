@@ -8,8 +8,11 @@
 1. Both Time dependent and independent PDEs converged well.
 2. Re-formulating as ODE problem serves a better approximation than numerical approximation methods.
 The typical method of backpropagation through ODEs is adjoint method as mentioned in [Neural Ordinary Differential Equations paper (NIPS 2018) by Chen et al.](https://arxiv.org/abs/1806.07366)
-3. The intuition We can select from a wide variety of ODE solvers.
-4. Faster and better convergence, but at the cost of greater memory consumption during backpropagation by Tracker.jl 
+3. Faster and better convergence, but at the cost of greater memory consumption during backpropagation by Tracker.jl. 
+
+**Advantages**:
+- Faster Convergence of time dependent PDEs leading upto one-third number of iterations required for converging.
+- We can select from a wide variety of ODE solvers based on order of error tolerance vs speed to converge trade-off.
 
 #### Elliptic Dirichlet (20 dimensions) 
 Note that graph is shown about x1 and x2 axis only while keeping remaining x_i = 1 for i=3, 4, ...20
@@ -36,11 +39,10 @@ Absolute Difference b/w approximated function and true function:
 
 ![Absolute Difference](https://github.com/Ayushk4/WAN_PDE/blob/master/Time_Dependent_pdes/20k_iters_Absolute_Diff.png)
 
-
 ### Possible directions:
 
-**Current limitation** of this approach of solving PDE is huge memory consumption while backpropagating
+**Current limitation** of this approach of solving PDE consumes about 2.5x more memory while backpropagating via adjoint method when compared to using reverse mode AD with numerical integration methods.
 
-**Solution to the current limitation** switch autodiff backend from [Tracker.jl](https://github.com/FluxML/Tracker.jl) to [Zygote.jl](https://github.com/FluxML/Zygote.jl). This can be done when DiffEqFlux.jl and Flux.jl switches over to Zygote.jl. 
+**Possible Solution to current limitation** switch autodiff backend from [Tracker.jl](https://github.com/FluxML/Tracker.jl) to [Zygote.jl](https://github.com/FluxML/Zygote.jl). This can be done when DiffEqFlux.jl and Flux.jl switches over to Zygote.jl. Another possible direction would be to see the performance of Reverse Mode AD of Zygote.jl vs Adjoint method.
 
-Zygote.jl uses source code transformation for reverse mode AutoDiff. This leads to faster and much less memory consumption while backpropagating when compared to Tracker.jl's Auto-diff.
+Zygote.jl uses source code transformation for reverse mode AutoDiff. In general, this leads to faster and much less memory consumption while backpropagating when compared to Tracker.jl's Auto-diff.
