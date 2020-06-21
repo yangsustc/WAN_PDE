@@ -5,24 +5,37 @@
 
 ## Results:
 
-Both Time dependent and independent PDEs converged well.
+1. Both Time dependent and independent PDEs converged well.
+2. Re-formulating as ODE problem serves a better approximation than numerical approximation methods.
+The typical method of backpropagation through ODEs is adjoint method as mentioned in [Neural Ordinary Differential Equations paper (NIPS 2018) by Chen et al.](https://arxiv.org/abs/1806.07366)
+3. The intuition We can select from a wide variety of ODE solvers.
+4. Faster and better convergence, but at the cost of greater memory consumption during backpropagation by Tracker.jl 
 
-#### Elliptic Dirichlet (20 dimensional) 
-Note that graph is shown about x1 and x2.
+#### Elliptic Dirichlet (20 dimensions) 
+Note that graph is shown about x1 and x2 axis only while keeping remaining x_i = 1 for i=3, 4, ...20
 
 Approximated Function:
 
-[!Approx Function](https://github.com/Ayushk4/WAN_PDE/blob/master/Elliptic_dirichlet_files/dims%3D20/After_20000_Iters.png)
+![Approx Function](https://github.com/Ayushk4/WAN_PDE/blob/master/Elliptic_dirichlet_files/dims%3D20/After_20000_Iters.png)
 
 True Function:
 
 ![True Function](https://github.com/Ayushk4/WAN_PDE/blob/master/Elliptic_dirichlet_files/dims%3D20/True_function.png)
 
-Re-formulating as ODE problem serves a better approximation than numerical approximation methods.
-The typical method of backpropagation through ODEs is adjoint method as mentioned in [Neural Ordinary Differential Equations paper (NIPS 2018) by Chen et al.](https://arxiv.org/abs/1806.07366)
+#### Time Dependent PDEs
 
-The intuition We can select from a wide variety of ODE solvers.
-Faster and better convergence, but at the cost of greater memory consumption during backpropagation by Tracker.jl 
+Approximated Function:
+
+![Approximate Function](https://github.com/Ayushk4/WAN_PDE/blob/master/Time_Dependent_pdes/20k_iters.png)
+
+True Function:
+
+![True Functions](https://github.com/Ayushk4/WAN_PDE/blob/master/Time_Dependent_pdes/true_function.png)
+
+Absolute Difference b/w approximated function and true function:
+
+![Absolute Difference](https://github.com/Ayushk4/WAN_PDE/blob/master/Time_Dependent_pdes/20k_iters_Absolute_Diff.png)
+
 
 ### Possible directions:
 
