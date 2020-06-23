@@ -57,3 +57,10 @@ Absolute Difference b/w approximated function and true function:
 **Possible Solution to current limitation** switch autodiff backend from [Tracker.jl](https://github.com/FluxML/Tracker.jl) to [Zygote.jl](https://github.com/FluxML/Zygote.jl). This can be done when DiffEqFlux.jl and Flux.jl switches over to Zygote.jl. Another possible direction would be to see the performance of Reverse Mode AD of Zygote.jl vs Adjoint method.
 
 Zygote.jl uses source code transformation for reverse mode AutoDiff. In general, this leads to faster and much less memory consumption while backpropagating when compared to Tracker.jl's Auto-diff.
+
+## References
+1. Yaohua Zang, Gang Bao, Xiaojing Ye, and Haomin Zhou. **Weak Adversarial Networks for High-dimensional Partial Differential Equations**. Journal of Computational Physics 2020, Article 109409. [[arxiv]](https://arxiv.org/abs/1907.08272)
+2. Ricky T. Q. Chen, Yulia Rubanova* Jesse Bettencourt, and David Duvenaud. **Neural Ordinary Differential Equations**. Advances in Neural Information Processing Systems 2018, pages 6571 - 6583. [[arxiv]](https://arxiv.org/abs/1806.07366)
+3. Lev Semenovich Pontryagin, EF Mishchenko, VG Boltyanskii, and RV Gamkrelidze. The mathematical theory of optimal processes. 1962.
+4. Mike Innes. Flux: Elegant machine learning with Julia. Journal of Open Source Software, 3(25), 602. [[paper]](https://joss.theoj.org/papers/10.21105/joss.00602)
+5. Chris Rackauckas, Mike Innes, Yingbo Ma, Jesse Bettencourt, Lyndon White, and Vaibhav Dixit. DiffEqFlux.jl - A Julia Library for Neural Differential Equations. arXiv preprint arXiv:1902.02376. [[paper]](https://arxiv.org/abs/1902.02376)
